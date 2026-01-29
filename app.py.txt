@@ -1,0 +1,87 @@
+import streamlit as st
+import numpy as np
+import pandas as pd
+from PIL import Image
+import os
+
+# --- 1. CONFIG & VERNACULAR SUPPORT ---
+st.set_page_config(page_title="A.S.E - Agri-Smart Ecosystem", layout="wide")
+
+LANG_DICT = {
+    "English": {"welcome": "Welcome to A.S.E", "select": "Select Soil", "guide": "Digital Guide"},
+    "Hindi": {"welcome": "A.S.E में आपका स्वागत है", "select": "मिट्टी चुनें", "guide": "डिजिटल गाइड"}
+}
+
+# --- 2. AUTHENTICATION SYSTEM ---
+if 'auth_status' not in st.session_state:
+    st.session_state.auth_status = False
+
+def login_signup():
+    st.title("🔐 A.S.E Login")
+    choice = st.radio("Action", ["Login", "Sign Up"])
+    user = st.text_input("Username")
+    pas = st.text_input("Password", type="password")
+    if st.button("Submit"):
+        st.session_state.auth_status = True
+        st.rerun()
+
+# --- 3. CORE ANALYTICS ENGINE (Decision Support) ---
+def calculate_suitability(input_vec):
+    crops_db = {
+        "Wheat": np.array([80, 40, 40, 20]),
+        "Rice": np.array([100, 60, 40, 80]),
+        "Maize": np.array([60, 30, 30, 40])
+    }
+    return {c: np.dot(input_vec, t)/(np.linalg.norm(input_vec)*np.linalg.norm(t)) for c, t in crops_db.items()}
+
+# --- 4. MAIN DASHBOARD ---
+def main_app():
+    lang = st.sidebar.selectbox("Language / भाषा", ["English", "Hindi"])
+    T = LANG_DICT[lang]
+    
+    st.sidebar.title(f"⭐ {T['guide']}")
+    st.sidebar.info("1. Click a soil photo.\n2. View crop matches.\n3. Access Govt. help.")
+
+    st.title(f"🌾 {T['welcome']}")
+    
+    # Visual Soil Report
+    st.header(T['select'])
+    col1, col2, col3 = st.columns(3)
+    soil_data = [
+        ("Alluvial", [90, 50, 45, 30], "assets/alluvial.jpg", col1),
+        ("Black", [70, 40, 60, 50], "assets/black.jpg", col2),
+        ("Clay", [50, 30, 30, 70], "assets/clay.jpg", col3)
+    ]
+
+    for name, vec, img_p, col in soil_data:
+        with col:
+            if os.path.exists(img_p): st.image(Image.open(img_p))
+            if st.button(f"Select {name}"): st.session_state.soil_vec = vec
+
+    # Decision Support & Knowledge Hub
+    if 'soil_vec' in st.session_state:
+        st.divider()
+        res = calculate_suitability(np.array(st.session_state.soil_vec))
+        
+        c1, c2 = st.columns(2)
+        with c1:
+            st.subheader("📊 Smart Decision Support")
+            for crop, score in res.items():
+                st.write(f"**{crop}**: {round(score*100, 2)}% Match")
+                st.progress(score)
+        
+        with c2:
+            st.subheader("📋 Integrated Knowledge Hub")
+            if os.path.exists("data/schemes.csv"):
+                st.dataframe(pd.read_csv("data/schemes.csv"), hide_index=True)
+
+    # Hybrid Resource Connectivity
+    st.divider()
+    st.header("📞 Kisan Sampark (Resource Support)")
+    st.button("📲 Call Local Machinery Rental Center")
+
+# --- EXECUTION ---
+if not st.session_state.auth_status:
+    login_signup()
+else:
+    main_app()
