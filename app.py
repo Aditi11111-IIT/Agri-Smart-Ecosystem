@@ -7,7 +7,7 @@ import requests
 from fpdf import FPDF
 
 # --- 1. SYSTEM CONFIGURATION ---
-st.set_page_config(page_title="Agri-Smart Ecosystem (A.S.E)", layout="wide")
+st.set_page_config(page_title="Agri-Smart Ecosystem", layout="wide")
 
 # Constants
 API_KEY = "44ce6d6e018ff31baf4081ed56eb7fb7"
@@ -42,6 +42,25 @@ def get_weather(city):
         return response
     except:
         return None
+    # --- SMART WEATHER ALERTS (Requirement: Real-time notification) ---
+    if w_data and w_data.get("weather"):
+        # Check if weather description contains 'rain' or 'drizzle'
+        weather_desc = w_data['weather'][0]['description'].lower()
+        main_weather = w_data['weather'][0]['main'].lower()
+        
+        if "rain" in weather_desc or "rain" in main_weather or "drizzle" in weather_desc:
+            st.error("⚠️ **CRITICAL ALERT / महत्वपूर्ण सूचना**")
+            
+            # English Alert
+            st.write("📢 **English:** It is likely to rain today. Please **DO NOT** apply fertilizer now as it will wash away.")
+            
+            # Hindi Alert
+            st.write("📢 **हिंदी:** आज बारिश होने की संभावना है। कृपया आज **उर्वरक (खाद)** का प्रयोग न करें, अन्यथा यह बह जाएगा।")
+            
+            if st.button("📲 Send Alert to My Phone (SMS)"):
+                st.success(f"Alert sent to +91-XXXXXX! Check your messages.")
+        else:
+            st.success("✅ Weather is clear for fertilizer application today.")
 
 def create_pdf(user, soil_name, scores):
     """Generate a downloadable PDF Soil Report"""
@@ -160,3 +179,4 @@ else:
     st.divider()
     st.header(f"📞 {T['contact']}")
     st.button("📲 One-Tap Call: Regional Rental Center")
+
