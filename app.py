@@ -33,7 +33,6 @@ LANG_DICT = {
 # --- 2. SUPPORT FUNCTIONS ---
 
 def get_weather(city):
-    """Fetch real-time weather using OpenWeatherMap API"""
     try:
         url = f"http://api.openweathermap.org/data/2.5/weather?q={city}&appid={API_KEY}&units=metric"
         response = requests.get(url).json()
@@ -42,7 +41,6 @@ def get_weather(city):
         return None
 
 def create_pdf(user, soil_name, scores):
-    """Generate a downloadable PDF Soil Report"""
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", 'B', 16)
@@ -52,7 +50,6 @@ def create_pdf(user, soil_name, scores):
     pdf.cell(200, 10, txt=f"Farmer Name: {user}", ln=True)
     pdf.cell(200, 10, txt=f"Primary Soil Type: {soil_name}", ln=True)
     pdf.cell(200, 10, txt="----------------------------------------------------------", ln=True)
-    pdf.ln(5)
     for crop, score in scores.items():
         pdf.cell(200, 10, txt=f"- {crop}: {round(score*100, 2)}% Match", ln=True)
     return pdf.output(dest='S').encode('latin-1')
@@ -75,7 +72,7 @@ if 'logged_in' not in st.session_state:
 
 if not st.session_state.logged_in:
     st.title("🔐 A.S.E Secure Login")
-    user = st.text_input("Username / mobile")
+    user = st.text_input("Username / Mobile")
     passw = st.text_input("Password", type="password")
     if st.button("Login"):
         st.session_state.logged_in = True
@@ -92,28 +89,24 @@ else:
         st.rerun()
 
     st.title(f"🌾 {T['title']}")
-    
-    # --- WEATHER & ALERT SECTION ---
+
+    # --- WEATHER & SMART ALERT SECTION ---
     w_data = get_weather(city)
     if w_data and w_data.get("main"):
-        st.info(f"☀️ {T['weather']}: {city} | Temp: {w_data['main']['temp']}°C | Humid: {w_data['main']['humidity']}% | {w_data['weather'][0]['description'].capitalize()}")
+        st.info(f"☀️ {T['weather']}: {city} | Temp: {w_data['main']['temp']}°C | Humid: {w_data['main']['humidity']}%")
         
-        # WEATHER ALERT LOGIC
         weather_desc = w_data['weather'][0]['description'].lower()
         if "rain" in weather_desc or "drizzle" in weather_desc:
             st.error("⚠️ **CRITICAL ALERT / महत्वपूर्ण सूचना**")
-            st.write("📢 **English:** It is likely to rain today. Please **DO NOT** apply fertilizer now.")
-            st.write("📢 **हिंदी:** आज बारिश की संभावना है। कृपया आज **उर्वरक (खाद)** का प्रयोग न करें।")
-            if st.button("📲 Send Alert to My Phone"):
-                st.success("Alert sent via SMS Simulation!")
+            st.write("📢 **English:** It is likely to rain. **DO NOT** apply fertilizer today.")
+            st.write("📢 **हिंदी:** आज बारिश की संभावना है। कृपया आज **उर्वरक (खाद)** न डालें।")
         else:
-            st.success("✅ Weather is clear for fertilizer application today.")
-    else:
-        st.warning("Weather API currently unavailable.")
+            st.success("✅ Weather is clear for fertilizer application.")
 
-    # --- SOIL SELECTION ---
+    # --- STEP 1: SAFE SOIL SELECTION (ADD IT HERE) ---
     st.header(T['soil_step'])
     col1, col2, col3 = st.columns(3)
+
     soil_list = [
         {"name": "Alluvial", "vec": [90, 50, 45, 30], "img": "assets/alluvial.jpg", "c": col1},
         {"name": "Black", "vec": [70, 40, 60, 50], "img": "assets/black.jpg", "c": col2},
@@ -122,15 +115,17 @@ else:
 
     for s in soil_list:
         with s["c"]:
-            if os.listdir("assets") and os.path.exists(s["img"]):
+            if os.path.exists(s["img"]):
                 st.image(Image.open(s["img"]), use_container_width=True)
             else:
-                st.info(f"Image: {s['name']}")
+                st.error(f"Missing: {s['img']}")
+                st.info("Check your 'assets' folder on GitHub.")
+                
             if st.button(f"Select {s['name']}"):
                 st.session_state.soil_vec = s["vec"]
                 st.session_state.soil_name = s["name"]
 
-    # --- ANALYSIS & PDF ---
+    # --- STEP 2: ANALYSIS & REPORT ---
     if 'soil_vec' in st.session_state:
         st.divider()
         st.header(f"📊 {T['report']}: {st.session_state.soil_name}")
@@ -143,16 +138,16 @@ else:
                 st.progress(score)
             
             pdf_bytes = create_pdf(st.session_state.user, st.session_state.soil_name, scores)
-            st.download_button("📥 Download Soil Report PDF", data=pdf_bytes, file_name="Soil_Report.pdf", mime='application/pdf')
+            st.download_button("📥 Download Soil Report PDF", data=pdf_bytes, file_name="Soil_Report.pdf")
 
         with c_kn:
             st.subheader(f"📋 {T['schemes']}")
-            if os.path.exists("schemes.csv"):
-                st.dataframe(pd.read_csv("schemes.csv"), hide_index=True)
+            # Path checking for schemes
+            if os.path.exists("data/schemes.csv"):
+                st.dataframe(pd.read_csv("data/schemes.csv"), hide_index=True)
             else:
-                st.error("Schemes data file missing in data/ folder.")
+                st.error("File 'data/schemes.csv' not found.")
 
     st.divider()
     st.header(f"📞 {T['contact']}")
     st.button("📲 One-Tap Call: Regional Rental Center")
-
