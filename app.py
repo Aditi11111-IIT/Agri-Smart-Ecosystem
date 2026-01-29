@@ -147,11 +147,12 @@ else:
 
         with c_kn:
             st.subheader(f"📋 {T['schemes']}")
-            if os.path.exists("data/schemes.csv"):
-                st.dataframe(pd.read_csv("data/schemes.csv"), hide_index=True)
+            if os.path.exists("schemes.csv"):
+                st.dataframe(pd.read_csv("schemes.csv"), hide_index=True)
             else:
                 st.error("Schemes data file missing in data/ folder.")
 
     st.divider()
     st.header(f"📞 {T['contact']}")
     st.button("📲 One-Tap Call: Regional Rental Center")
+
