@@ -85,3 +85,4 @@ if not st.session_state.auth_status:
     login_signup()
 else:
     main_app()
+
