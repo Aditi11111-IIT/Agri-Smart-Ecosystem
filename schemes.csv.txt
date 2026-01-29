@@ -1,0 +1,4 @@
+Scheme Name,Benefit,Category,Target Crop
+PM-Kisan Samman,₹6000/year,Financial,All
+Soil Health Card,Nutrient Analysis,Soil,All
+Fasal Bima Yojana,Insurance,Protection,Cereals
