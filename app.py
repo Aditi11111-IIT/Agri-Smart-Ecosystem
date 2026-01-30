@@ -1,7 +1,6 @@
 import streamlit as st
-import numpy as np
-import requests
 import pandas as pd
+import requests
 import random
 from fpdf import FPDF
 from datetime import datetime
@@ -9,121 +8,148 @@ import folium
 from streamlit_folium import st_folium
 import plotly.graph_objects as go
 
-# --- CONFIGURATION & API ---
-st.set_page_config(page_title="Agri-Smart Ecosystem (A.S.E)", layout="wide", page_icon="🌾")
+# --- 1. SETTINGS & BILINGUAL DICTIONARY ---
+st.set_page_config(page_title="Agri-Smart Ecosystem 2026", layout="wide", page_icon="🌾")
 API_KEY = "44ce6d6e018ff31baf4081ed56eb7fb7" 
 
-# --- DATA ENGINES ---
-CENTRAL_SCHEMES = [
-    {"Scheme": "PM-KISAN", "Benefit": "₹2,000 (22nd Installment Feb 2026)", "Link": "https://pmkisan.gov.in/"},
-    {"Scheme": "PM-KUSUM 2.0", "Benefit": "Solar Pump Subsidy (Up to 50%)", "Link": "https://pmkusum.mnre.gov.in/"}
-]
-
-STATE_SCHEMES = {
-    "Bihar": [{"Scheme": "Bihar Rajya Fasal Sahayata", "Benefit": "Crop Loss Support", "Link": "https://pacsonline.bih.nic.in/"}],
-    "Maharashtra": [{"Scheme": "Namo Shetkari Yojana", "Benefit": "Addl. ₹6,000/year", "Link": "https://nsmny.maharashtra.gov.in/"}],
-    "Punjab": [{"Scheme": "CRM Scheme", "Benefit": "Happy Seeder Subsidy", "Link": "https://agrimachinery.nic.in/"}]
+content = {
+    "English": {
+        "title": "🚜 Agri-Smart Ecosystem",
+        "weather": "Weather & Alerts",
+        "soil": "Soil & Fertilizer",
+        "pests": "Pest Diagnosis",
+        "mandi": "Mandi Rates",
+        "schemes": "Govt Schemes",
+        "district": "Enter District",
+        "select_crop": "Select Your Crop",
+        "select_issue": "What do you see on the plant?",
+        "solution": "Recommended Solution",
+        "report": "Download Soil Report (PDF)",
+        "urea": "Urea Required (50kg Bags)",
+        "apply": "Apply Here"
+    },
+    "Hindi": {
+        "title": "🚜 एग्री-स्मार्ट इकोसिस्टम",
+        "weather": "मौसम और अलर्ट",
+        "soil": "मिट्टी और उर्वरक",
+        "pests": "कीट और रोग उपचार",
+        "mandi": "मंडी भाव",
+        "schemes": "सरकारी योजनाएं",
+        "district": "अपना जिला दर्ज करें",
+        "select_crop": "अपनी फसल चुनें",
+        "select_issue": "पौधे पर आप क्या देख रहे हैं?",
+        "solution": "सुझाया गया समाधान",
+        "report": "मिट्टी की रिपोर्ट डाउनलोड करें (PDF)",
+        "urea": "यूरिया की आवश्यकता (50 किलो बोरी)",
+        "apply": "यहाँ आवेदन करें"
+    }
 }
 
-DISEASE_DB = {
-    "Wheat": {"yellow leaves": "Yellow Rust (Fix: Propiconazole)", "brown spots": "Leaf Blight (Fix: Mancozeb)"},
-    "Rice": {"wilting": "Bacterial Blight (Fix: Streptocycline)", "holes": "Stem Borer (Fix: Carbofuran)"}
+# --- 2. DATABASES ---
+PEST_DATA = {
+    "Wheat (गेहूँ)": {
+        "Yellow stripes (पीली धारियां)": "Yellow Rust: Spray Propiconazole 25% EC.",
+        "Brown spots (भूरे धब्बे)": "Leaf Blight: Use Mancozeb 75 WP."
+    },
+    "Rice (धान)": {
+        "Drying leaf tips (पत्तियों का सूखना)": "Bacterial Blight: Apply Streptocycline.",
+        "Holes in stems (तने में छेद)": "Stem Borer: Use Carbofuran 3G."
+    }
 }
 
-# --- FUNCTIONS ---
+SCHEMES = {
+    "Central": [{"Name": "PM-KISAN", "Ben": "₹2,000 (Feb 2026)", "Link": "https://pmkisan.gov.in/"}],
+    "State": {
+        "Bihar": [{"Name": "Bihar Fasal Sahayata", "Ben": "Crop Insurance", "Link": "https://pacsonline.bih.nic.in/"}],
+        "Maharashtra": [{"Name": "Namo Shetkari", "Ben": "₹6,000 Bonus", "Link": "https://nsmny.maharashtra.gov.in/"}]
+    }
+}
+
+# --- 3. HELPER FUNCTIONS ---
 def get_weather(city):
     url = f"http://api.openweathermap.org/data/2.5/weather?q={city}&appid={API_KEY}&units=metric"
     try:
         r = requests.get(url, timeout=5).json()
-        return {"temp": r['main']['temp'], "hum": r['main']['humidity'], "desc": r['weather'][0]['description']}
-    except: return {"temp": 25, "hum": 60, "desc": "API Offline (Demo Mode)"}
+        return {"temp": r['main']['temp'], "desc": r['weather'][0]['description'], "hum": r['main']['humidity']}
+    except: return {"temp": 28, "desc": "clear sky", "hum": 50}
 
-def create_pdf(farmer, city, soil, scores):
+def create_pdf(farmer, dist, crop, bags):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", 'B', 16)
-    pdf.cell(0, 10, "OFFICIAL AGRI-SMART REPORT 2026", ln=1, align='C')
+    pdf.cell(0, 10, "OFFICIAL AGRI-SMART SOIL REPORT", ln=1, align='C')
     pdf.set_font("Arial", size=12)
-    pdf.cell(0, 10, f"Farmer: {farmer} | Location: {city} | Date: {datetime.now().date()}", ln=1)
-    pdf.cell(0, 10, f"Soil Type: {soil}", ln=1)
-    for crop, s in scores.items():
-        pdf.cell(0, 10, f"- {crop}: {s}% Match", ln=1)
+    pdf.cell(0, 10, f"Farmer Name: {farmer}", ln=1)
+    pdf.cell(0, 10, f"District: {dist}", ln=1)
+    pdf.cell(0, 10, f"Selected Crop: {crop}", ln=1)
+    pdf.cell(0, 10, f"Total Urea Bags Recommended: {bags}", ln=1)
     return pdf.output(dest='S').encode('latin-1')
 
-# --- AUTHENTICATION ---
+# --- 4. MAIN APP ---
 if 'auth' not in st.session_state: st.session_state.auth = False
 
 if not st.session_state.auth:
-    st.title("🚜 Agri-Smart Login")
-    name = st.text_input("Farmer Name")
-    if st.button("Enter Dashboard") and name:
-        st.session_state.auth, st.session_state.user = True, name
+    st.title("🚜 A.S.E Secure Login / लॉगिन")
+    u_name = st.text_input("Name / नाम")
+    if st.button("Enter / प्रवेश"):
+        st.session_state.auth, st.session_state.user = True, u_name
         st.rerun()
 else:
-    # --- UI LAYOUT ---
-    dist = st.sidebar.text_input("District", "Patna").strip().title()
-    lang = st.sidebar.radio("Language", ["English", "Hindi"])
-    w = get_weather(dist)
-    
-    st.title(f"🌾 A.S.E Dashboard | Welcome {st.session_state.user}")
-    
-    # 1. WEATHER & GPS
-    col_w, col_g = st.columns([1, 1])
-    with col_w:
-        st.subheader("🌦 Live Weather")
-        st.metric("Temperature", f"{w['temp']}°C")
-        if "rain" in w['desc'].lower(): st.error(f"⚠️ {w['desc'].title()}: Avoid Fertilizers!")
-        else: st.success(f"✅ {w['desc'].title()}: Good for spraying.")
-    
-    with col_g:
-        st.subheader("📍 Field Mapping")
+    lang = st.sidebar.radio("Language / भाषा", ["English", "Hindi"])
+    txt = content[lang]
+    dist = st.sidebar.text_input(txt["district"], "Patna")
+    w_data = get_weather(dist)
+
+    st.title(txt["title"])
+    st.write(f"👋 {st.session_state.user} | {datetime.now().strftime('%d %B %Y')}")
+
+    # WEATHER ALERT BOX
+    if "rain" in w_data["desc"].lower():
+        st.error(f"⚠️ {w_data['desc'].upper()}! Do NOT apply fertilizer today.")
+    else:
+        st.success(f"✅ Weather: {w_data['desc'].title()}. Safe for field work.")
+
+    tabs = st.tabs([txt["weather"], txt["soil"], txt["pests"], txt["mandi"], txt["schemes"]])
+
+    with tabs[0]:
+        c1, c2 = st.columns(2)
+        c1.metric("Temperature", f"{w_data['temp']}°C")
+        c2.metric("Humidity", f"{w_data['hum']}%")
+        st.subheader("📍 Field Location (GPS Mapping)")
         m = folium.Map(location=[25.59, 85.13], zoom_start=12)
-        folium.Marker([25.59, 85.13], tooltip="Your Field").add_to(m)
-        st_folium(m, height=150, use_container_width=True)
+        folium.Marker([25.59, 85.13], popup="Your Farm").add_to(m)
+        st_folium(m, height=200, use_container_width=True)
 
-    # 2. CORE FEATURES TABS
-    t1, t2, t3, t4 = st.tabs(["Soil & Fertilizer", "Pest Diagnosis", "Mandi Rates", "Live Schemes"])
-    
-    with t1:
-        st.header("🧪 Soil & Fertilizer")
-        soil_type = st.selectbox("Select Soil", ["Alluvial", "Black", "Clay"])
-        acres = st.number_input("Field Size (Acres)", 0.5, 50.0, 1.0)
-        crop_sel = st.selectbox("Crop", ["Wheat", "Rice", "Maize"])
-        scores = {"Wheat": 85, "Rice": 70, "Maize": 65}
+    with tabs[1]:
+        st.header(txt["soil"])
+        crop_sel = st.selectbox(txt["select_crop"], ["Wheat (गेहूँ)", "Rice (धान)"])
+        acres = st.number_input("Acres / एकड़", 0.5, 100.0, 1.0)
+        urea_bags = round(acres * 1.5, 1)
+        st.metric(txt["urea"], urea_bags)
         
-        st.write(f"**Urea Needed:** {round(acres * 1.5, 1)} Bags (50kg)")
-        
-        
-        pdf_bytes = create_pdf(st.session_state.user, dist, soil_type, scores)
-        st.download_button("📥 Download Soil Report", pdf_bytes, "Soil_Report.pdf")
+        if st.download_button(txt["report"], create_pdf(st.session_state.user, dist, crop_sel, urea_bags), "Report.pdf"):
+            st.toast("PDF Generated!")
 
-    with t2:
-        st.header("🦠 Symptom Checker")
-        symp = st.text_input("Describe problem (e.g. yellow leaves)")
-        if symp:
-            res = DISEASE_DB.get(crop_sel, {}).get(symp.lower(), "Contact KVK Expert.")
-            st.warning(f"Diagnosis: {res}")
+    with tabs[2]:
+        st.header(txt["pests"])
+        issue_list = list(PEST_DATA.get(crop_sel, {}).keys())
+        selected_issue = st.selectbox(txt["select_issue"], ["-- Select --"] + issue_list)
+        if selected_issue != "-- Select --":
+            st.info(f"**{txt['solution']}:** {PEST_DATA[crop_sel][selected_issue]}")
         
 
-    with t3:
-        st.header("📈 Market Trends")
-        prices = [2100 + random.randint(-40, 60) for _ in range(7)]
-        fig = go.Figure(go.Scatter(y=prices, mode='lines+markers', line_color='green'))
-        st.plotly_chart(fig, use_container_width=True)
-        st.write(f"Today's Price: ₹{prices[-1]}/quintal")
+    with tabs[3]:
+        st.header(txt["mandi"])
+        prices = [2100 + random.randint(-50, 50) for _ in range(7)]
+        st.plotly_chart(go.Figure(go.Scatter(y=prices, mode='lines+markers')), use_container_width=True)
+        st.write(f"Current Market Rate: ₹{prices[-1]}/quintal")
 
-    with t4:
-        st.header("🏛 Live Government Schemes")
-        st.subheader("Central Schemes")
-        st.table(pd.DataFrame(CENTRAL_SCHEMES))
-        
-        state = "Bihar" if dist in ["Patna", "Gaya"] else "Other"
-        if state in STATE_SCHEMES:
-            st.subheader(f"{state} Specific Schemes")
-            st.table(pd.DataFrame(STATE_SCHEMES[state]))
-        
+    with tabs[4]:
+        st.header(txt["schemes"])
+        state_key = "Bihar" if dist in ["Patna", "Gaya"] else "Maharashtra"
+        for s in SCHEMES["Central"] + SCHEMES["State"].get(state_key, []):
+            st.markdown(f"✅ **{s['Name']}**: {s['Ben']} | [**{txt['apply']}**]({s['Link']})")
 
-    # 3. RENTAL CONNECT
     st.divider()
-    st.subheader("🚜 Rental Marketplace")
-    st.markdown('📞 [Call Tractor Owner](tel:9876543210) | 💬 [SMS Request](sms:9876543210?body=Need help at my field)')
+    st.subheader("🚜 Machinery Rental (Instant Call)")
+    st.markdown(f'📞 [Call Tractor Owner](tel:9876543210) | 💬 [SMS Support](sms:9876543210)')
