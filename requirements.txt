@@ -1,8 +1,8 @@
 streamlit
 numpy
-pandas
-Pillow
 requests
+pandas
 fpdf
+folium
+streamlit-folium
 plotly
-
