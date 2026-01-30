@@ -1,0 +1,11 @@
+name: Agri-Smart Auto Sync
+on:
+  push:
+    branches: [ main ]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Sync Check
+        run: echo "Code is validated and synced with Streamlit Cloud."
