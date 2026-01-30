@@ -1,243 +1,129 @@
 import streamlit as st
 import numpy as np
-import pandas as pd
-from PIL import Image
-import os
 import requests
+import pandas as pd
+import random
 from fpdf import FPDF
-import plotly.graph_objects as go
 from datetime import datetime
-import base64
+import folium
+from streamlit_folium import st_folium
+import plotly.graph_objects as go
 
-# --- 1. CONFIGURATION & ASSETS ---
+# --- CONFIGURATION & API ---
 st.set_page_config(page_title="Agri-Smart Ecosystem (A.S.E)", layout="wide", page_icon="🌾")
-
-# Placeholder API Key (OpenWeatherMap)
 API_KEY = "44ce6d6e018ff31baf4081ed56eb7fb7" 
 
-# --- 2. MULTI-LINGUAL KNOWLEDGE BASE (Simulating Online Resources) ---
-# In a real app, this would fetch from a database or Google Custom Search API
-KNOWLEDGE_BASE = {
-    "Wheat": {
-        "English": {
-            "Climate": "Cool winters (10-15°C) and warm summers.",
-            "Soil": "Well-drained Loam or Clay Loam.",
-            "Water": "Requires 4-6 irrigations at critical stages.",
-            "Fertilizer": "NPK Ratio: 4:2:1. Add Urea at crown root initiation."
-        },
-        "Hindi": {
-            "Climate": "ठंडी सर्दियाँ (10-15°C) और गर्म ग्रीष्मकाल।",
-            "Soil": "अच्छी जल निकासी वाली दोमट या चिकनी मिट्टी।",
-            "Water": "महत्वपूर्ण चरणों में 4-6 सिंचाई की आवश्यकता होती है।",
-            "Fertilizer": "NPK अनुपात: 4:2:1। जड़ बनते समय यूरिया डालें।"
-        }
-    },
-    "Rice": {
-        "English": {
-            "Climate": "Hot and humid (20-35°C). High rainfall.",
-            "Soil": "Clayey soil with good water retention.",
-            "Water": "Requires standing water (submergence).",
-            "Fertilizer": "Bio-fertilizers like Azolla enhance yield."
-        },
-        "Hindi": {
-            "Climate": "गर्म और आर्द्र (20-35°C)। अधिक वर्षा।",
-            "Soil": "पानी रोकने वाली चिकनी मिट्टी।",
-            "Water": "खड़े पानी (जलमग्नता) की आवश्यकता होती है।",
-            "Fertilizer": "एजोला जैसे जैव उर्वरक उपज बढ़ाते हैं।"
-        }
-    },
-    "Maize": {
-        "English": {
-            "Climate": "Warm weather, cannot tolerate frost.",
-            "Soil": "Deep, fertile, well-drained soils.",
-            "Water": "Sensitive to both drought and waterlogging.",
-            "Fertilizer": "Needs high Nitrogen application."
-        },
-        "Hindi": {
-            "Climate": "गर्म मौसम, पाला सहन नहीं कर सकता।",
-            "Soil": "गहरी, उपजाऊ, अच्छी जल निकासी वाली मिट्टी।",
-            "Water": "सूखा और जलभराव दोनों के प्रति संवेदनशील।",
-            "Fertilizer": "उच्च नाइट्रोजन आवेदन की आवश्यकता है।"
-        }
-    }
+# --- DATA ENGINES ---
+CENTRAL_SCHEMES = [
+    {"Scheme": "PM-KISAN", "Benefit": "₹2,000 (22nd Installment Feb 2026)", "Link": "https://pmkisan.gov.in/"},
+    {"Scheme": "PM-KUSUM 2.0", "Benefit": "Solar Pump Subsidy (Up to 50%)", "Link": "https://pmkusum.mnre.gov.in/"}
+]
+
+STATE_SCHEMES = {
+    "Bihar": [{"Scheme": "Bihar Rajya Fasal Sahayata", "Benefit": "Crop Loss Support", "Link": "https://pacsonline.bih.nic.in/"}],
+    "Maharashtra": [{"Scheme": "Namo Shetkari Yojana", "Benefit": "Addl. ₹6,000/year", "Link": "https://nsmny.maharashtra.gov.in/"}],
+    "Punjab": [{"Scheme": "CRM Scheme", "Benefit": "Happy Seeder Subsidy", "Link": "https://agrimachinery.nic.in/"}]
 }
 
-LANG_DICT = {
-    "English": {
-        "title": "Agri-Smart Dashboard",
-        "weather": "Live Weather & Forecast",
-        "soil_step": "Step 1: Visual Soil Selection",
-        "report": "Analysis & PDF Report",
-        "rental": "Equipment Rental (Click to Call/SMS)",
-        "knowledge": "Crop Knowledge Center",
-        "rain_alert": "⚠️ ALERT: Rain Predicted! Delay fertilizer application.",
-        "clear_alert": "✅ SAFE: Weather is clear for fertilizer.",
-        "download": "📥 Download Farmer Report",
-    },
-    "Hindi": {
-        "title": "एग्री-स्मार्ट डैशबोर्ड",
-        "weather": "लाइव मौसम और पूर्वानुमान",
-        "soil_step": "चरण 1: मिट्टी का चयन",
-        "report": "विश्लेषण और पीडीएफ रिपोर्ट",
-        "rental": "कृषि उपकरण किराया (कॉल/SMS करें)",
-        "knowledge": "फसल ज्ञान केंद्र",
-        "rain_alert": "⚠️ चेतावनी: बारिश की संभावना! आज खाद न डालें।",
-        "clear_alert": "✅ सुरक्षित: मौसम साफ है। उर्वरक डाल सकते हैं।",
-        "download": "📥 किसान रिपोर्ट डाउनलोड करें",
-    }
+DISEASE_DB = {
+    "Wheat": {"yellow leaves": "Yellow Rust (Fix: Propiconazole)", "brown spots": "Leaf Blight (Fix: Mancozeb)"},
+    "Rice": {"wilting": "Bacterial Blight (Fix: Streptocycline)", "holes": "Stem Borer (Fix: Carbofuran)"}
 }
 
-# --- 3. PDF GENERATION ENGINE ---
-class PDFReport(FPDF):
-    def header(self):
-        self.set_font('Arial', 'B', 16)
-        self.cell(0, 10, 'Agri-Smart Ecosystem - Farmer Report', 0, 1, 'C')
-        self.ln(5)
-
-    def generate_content(self, user, city, soil_type, scores, weather_data):
-        self.set_font('Arial', '', 12)
-        # Farmer Details
-        self.set_fill_color(230, 240, 230)
-        self.cell(0, 10, f"Farmer Name: {user} | Location: {city}", 0, 1, 'L', True)
-        self.cell(0, 10, f"Date: {datetime.now().strftime('%d-%m-%Y')} | Soil Type: {soil_type}", 0, 1, 'L', True)
-        self.ln(10)
-        
-        # Weather Section
-        self.set_font('Arial', 'B', 14)
-        self.cell(0, 10, "1. Current Weather Status", 0, 1)
-        self.set_font('Arial', '', 12)
-        if weather_data:
-            self.cell(0, 10, f"Temp: {weather_data['main']['temp']}C | Humidity: {weather_data['main']['humidity']}%", 0, 1)
-            self.cell(0, 10, f"Condition: {weather_data['weather'][0]['description']}", 0, 1)
-        self.ln(5)
-
-        # Crop Section
-        self.set_font('Arial', 'B', 14)
-        self.cell(0, 10, "2. Recommended Crops (Suitability Score)", 0, 1)
-        self.set_font('Arial', '', 12)
-        for crop, score in scores.items():
-            self.cell(0, 10, f"- {crop}: {round(score*100, 1)}%", 0, 1)
-        
-        # Disclaimer
-        self.ln(20)
-        self.set_font('Arial', 'I', 10)
-        self.multi_cell(0, 10, "Note: This report is generated by AI based on visual soil inputs. Please consult a lab for chemical testing before large investments.")
-
-# --- 4. UTILITIES ---
+# --- FUNCTIONS ---
 def get_weather(city):
+    url = f"http://api.openweathermap.org/data/2.5/weather?q={city}&appid={API_KEY}&units=metric"
     try:
-        url = f"http://api.openweathermap.org/data/2.5/weather?q={city}&appid={API_KEY}&units=metric"
-        return requests.get(url).json()
-    except: return None
+        r = requests.get(url, timeout=5).json()
+        return {"temp": r['main']['temp'], "hum": r['main']['humidity'], "desc": r['weather'][0]['description']}
+    except: return {"temp": 25, "hum": 60, "desc": "API Offline (Demo Mode)"}
 
-def calculate_suitability(vec):
-    crops_db = {
-        "Wheat": np.array([80, 40, 40, 20]),
-        "Rice": np.array([100, 60, 40, 80]),
-        "Maize": np.array([60, 30, 30, 40])
-    }
-    return {c: np.dot(vec, t)/(np.linalg.norm(vec)*np.linalg.norm(t)) for c, t in crops_db.items()}
+def create_pdf(farmer, city, soil, scores):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", 'B', 16)
+    pdf.cell(0, 10, "OFFICIAL AGRI-SMART REPORT 2026", ln=1, align='C')
+    pdf.set_font("Arial", size=12)
+    pdf.cell(0, 10, f"Farmer: {farmer} | Location: {city} | Date: {datetime.now().date()}", ln=1)
+    pdf.cell(0, 10, f"Soil Type: {soil}", ln=1)
+    for crop, s in scores.items():
+        pdf.cell(0, 10, f"- {crop}: {s}% Match", ln=1)
+    return pdf.output(dest='S').encode('latin-1')
 
-# --- 5. MAIN APP ---
-if 'authenticated' not in st.session_state: st.session_state.authenticated = False
+# --- AUTHENTICATION ---
+if 'auth' not in st.session_state: st.session_state.auth = False
 
-if not st.session_state.authenticated:
-    st.title("🚜 Agri-Smart Secure Login")
-    c1, c2 = st.columns(2)
-    with c1:
-        u = st.text_input("Username (e.g., kisan1)")
-        p = st.text_input("Password", type="password")
-        if st.button("Login"):
-            st.session_state.authenticated = True
-            st.session_state.user = u
-            st.rerun()
+if not st.session_state.auth:
+    st.title("🚜 Agri-Smart Login")
+    name = st.text_input("Farmer Name")
+    if st.button("Enter Dashboard") and name:
+        st.session_state.auth, st.session_state.user = True, name
+        st.rerun()
 else:
-    # Sidebar
-    lang = st.sidebar.radio("Select Language", ["English", "Hindi"], horizontal=True)
-    T = LANG_DICT[lang]
-    city = st.sidebar.text_input("City/Village", "Patna")
-    st.sidebar.markdown("---")
+    # --- UI LAYOUT ---
+    dist = st.sidebar.text_input("District", "Patna").strip().title()
+    lang = st.sidebar.radio("Language", ["English", "Hindi"])
+    w = get_weather(dist)
     
-    st.title(f"🌾 {T['title']}")
+    st.title(f"🌾 A.S.E Dashboard | Welcome {st.session_state.user}")
     
-    # --- A. LIVE WEATHER ---
-    w = get_weather(city)
-    if w and 'main' in w:
-        c1, c2, c3 = st.columns(3)
-        c1.metric("🌡 Temp", f"{w['main']['temp']}°C")
-        c2.metric("💧 Humidity", f"{w['main']['humidity']}%")
-        c3.metric("☁ Condition", w['weather'][0]['main'])
-        
-        is_raining = "rain" in w['weather'][0]['description'].lower()
-        if is_raining: st.error(T['rain_alert'])
-        else: st.success(T['clear_alert'])
+    # 1. WEATHER & GPS
+    col_w, col_g = st.columns([1, 1])
+    with col_w:
+        st.subheader("🌦 Live Weather")
+        st.metric("Temperature", f"{w['temp']}°C")
+        if "rain" in w['desc'].lower(): st.error(f"⚠️ {w['desc'].title()}: Avoid Fertilizers!")
+        else: st.success(f"✅ {w['desc'].title()}: Good for spraying.")
     
-    # --- B. VISUAL SOIL SELECTION ---
-    st.header(T['soil_step'])
-    cols = st.columns(3)
-    soils = [
-        {"n": "Alluvial", "v": [90,50,45,30], "img": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/85/Soil_profile.jpg/640px-Soil_profile.jpg"},
-        {"n": "Black", "v": [70,40,60,50], "img": "https://upload.wikimedia.org/wikipedia/commons/2/23/Black_Soil.jpg"},
-        {"n": "Clay", "v": [50,30,30,70], "img": "https://upload.wikimedia.org/wikipedia/commons/thumb/0/02/Clay-ss-2005.jpg/640px-Clay-ss-2005.jpg"}
-    ]
-    
-    for idx, s in enumerate(soils):
-        with cols[idx]:
-            st.image(s['img'], height=150, use_container_width=True)
-            if st.button(f"Select {s['n']}", key=idx):
-                st.session_state.soil_vec = s['v']
-                st.session_state.soil_name = s['n']
+    with col_g:
+        st.subheader("📍 Field Mapping")
+        m = folium.Map(location=[25.59, 85.13], zoom_start=12)
+        folium.Marker([25.59, 85.13], tooltip="Your Field").add_to(m)
+        st_folium(m, height=150, use_container_width=True)
 
-    # --- C. ANALYSIS, REPORT & KNOWLEDGE ---
-    if 'soil_vec' in st.session_state:
-        st.divider()
-        scores = calculate_suitability(np.array(st.session_state.soil_vec))
+    # 2. CORE FEATURES TABS
+    t1, t2, t3, t4 = st.tabs(["Soil & Fertilizer", "Pest Diagnosis", "Mandi Rates", "Live Schemes"])
+    
+    with t1:
+        st.header("🧪 Soil & Fertilizer")
+        soil_type = st.selectbox("Select Soil", ["Alluvial", "Black", "Clay"])
+        acres = st.number_input("Field Size (Acres)", 0.5, 50.0, 1.0)
+        crop_sel = st.selectbox("Crop", ["Wheat", "Rice", "Maize"])
+        scores = {"Wheat": 85, "Rice": 70, "Maize": 65}
         
-        col_res, col_know = st.columns([1, 1])
+        st.write(f"**Urea Needed:** {round(acres * 1.5, 1)} Bags (50kg)")
         
-        with col_res:
-            st.subheader(f"📊 {T['report']}")
-            for crop, score in scores.items():
-                st.write(f"**{crop}**")
-                st.progress(score)
-            
-            # PDF Generation
-            pdf = PDFReport()
-            pdf.add_page()
-            pdf.generate_content(st.session_state.user, city, st.session_state.soil_name, scores, w)
-            pdf_bytes = pdf.output(dest='S').encode('latin-1')
-            st.download_button(label=T['download'], data=pdf_bytes, file_name=f"Soil_Report_{st.session_state.user}.pdf", mime='application/pdf')
+        
+        pdf_bytes = create_pdf(st.session_state.user, dist, soil_type, scores)
+        st.download_button("📥 Download Soil Report", pdf_bytes, "Soil_Report.pdf")
 
-        with col_know:
-            st.subheader(f"🧠 {T['knowledge']}")
-            selected_crop = st.selectbox("Select Crop for Details / फसल चुनें", ["Wheat", "Rice", "Maize"])
-            info = KNOWLEDGE_BASE[selected_crop][lang]
-            with st.chat_message("assistant"):
-                st.markdown(f"**Climate:** {info['Climate']}")
-                st.markdown(f"**Soil Prep:** {info['Soil']}")
-                st.markdown(f"**Water:** {info['Water']}")
-                st.markdown(f"**Fertilizer:** {info['Fertilizer']}")
+    with t2:
+        st.header("🦠 Symptom Checker")
+        symp = st.text_input("Describe problem (e.g. yellow leaves)")
+        if symp:
+            res = DISEASE_DB.get(crop_sel, {}).get(symp.lower(), "Contact KVK Expert.")
+            st.warning(f"Diagnosis: {res}")
+        
 
-    # --- D. RENTAL MARKETPLACE (CALL/SMS) ---
+    with t3:
+        st.header("📈 Market Trends")
+        prices = [2100 + random.randint(-40, 60) for _ in range(7)]
+        fig = go.Figure(go.Scatter(y=prices, mode='lines+markers', line_color='green'))
+        st.plotly_chart(fig, use_container_width=True)
+        st.write(f"Today's Price: ₹{prices[-1]}/quintal")
+
+    with t4:
+        st.header("🏛 Live Government Schemes")
+        st.subheader("Central Schemes")
+        st.table(pd.DataFrame(CENTRAL_SCHEMES))
+        
+        state = "Bihar" if dist in ["Patna", "Gaya"] else "Other"
+        if state in STATE_SCHEMES:
+            st.subheader(f"{state} Specific Schemes")
+            st.table(pd.DataFrame(STATE_SCHEMES[state]))
+        
+
+    # 3. RENTAL CONNECT
     st.divider()
-    st.header(f"🚜 {T['rental']}")
-    
-    rentals = [
-        {"name": "Mahindra Tractor", "price": "₹600/hr", "owner": "Raju Bhai", "ph": "9876543210", "img": "https://cdn-icons-png.flaticon.com/512/2674/2674486.png"},
-        {"name": "Rotavator", "price": "₹200/hr", "owner": "Kisan Seva", "ph": "9123456789", "img": "https://cdn-icons-png.flaticon.com/512/3600/3600986.png"},
-        {"name": "Harvester", "price": "₹1200/hr", "owner": "Amit Singh", "ph": "9988776655", "img": "https://cdn-icons-png.flaticon.com/512/5753/5753966.png"}
-    ]
-    
-    r1, r2, r3 = st.columns(3)
-    for idx, (col, item) in enumerate(zip([r1, r2, r3], rentals)):
-        with col:
-            st.image(item['img'], width=80)
-            st.write(f"**{item['name']}**")
-            st.caption(f"Price: {item['price']} | Owner: {item['owner']}")
-            
-            # Call & SMS Links
-            c_btn, s_btn = st.columns(2)
-            c_btn.markdown(f'<a href="tel:{item["ph"]}" style="text-decoration:none;"><button style="width:100%; background-color:#4CAF50; color:white; border:none; padding:5px; border-radius:5px;">📞 Call</button></a>', unsafe_allow_html=True)
-            s_btn.markdown(f'<a href="sms:{item["ph"]}?body=I need {item["name"]} on rent." style="text-decoration:none;"><button style="width:100%; background-color:#2196F3; color:white; border:none; padding:5px; border-radius:5px;">💬 SMS</button></a>', unsafe_allow_html=True)
-
-    st.sidebar.button("Logout", on_click=lambda: st.session_state.clear())
+    st.subheader("🚜 Rental Marketplace")
+    st.markdown('📞 [Call Tractor Owner](tel:9876543210) | 💬 [SMS Request](sms:9876543210?body=Need help at my field)')
