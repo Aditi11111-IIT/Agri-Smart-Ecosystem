@@ -6,3 +6,4 @@ fpdf
 folium
 streamlit-folium
 plotly
+fpdf2
